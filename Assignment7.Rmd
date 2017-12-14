@@ -9,70 +9,88 @@ In the following assignment you will be looking at data from an one level of an 
 
 #Upload data
 ```{r}
-
+D1 <- read.csv("D:/education & psychology/learning analytics/HUDK 4050 Core Mthds Educ Data Mining_Lang/assignments/assignment7-master/online.data.csv", header = TRUE)
 ```
 
 #Visualization 
 ```{r}
-#Start by creating histograms of the distributions for all variables (#HINT: look up "facet" in the ggplot documentation)
+#histograms of the distributions for all variables
+library(plyr)
+library(psych)
+multi.hist(D1[,sapply(D1, is.numeric)])
 
-#Then visualize the relationships between variables
-
-#Try to capture an intution about the data and the relationships
-
+#visualize the relationships between variables
+pairs(D1[, 2:7])
+#capture an intution about the data and the relationships
 ```
+
+It seems that most pairwise variables have a clear linear relationship. Those three variables that can separate level.up rather well are post.test.score, forum.posts, and messages.
+
 #Classification tree
 ```{r}
-#Create a classification tree that predicts whether a student "levels up" in the online course using three variables of your choice (As we did last time, set all controls to their minimums)
-
+#Create a classification tree using three variables 
+library(rpart)
+rp <- rpart(factor(level.up)~post.test.score + messages + forum.posts, method="class", data=D1)
+printcp(rp)
 #Plot and generate a CP table for your tree 
+post(rp, file='',title='Tree1')
+#probability that a student levels up based on classification tree 
+D1$pred <- predict(rp, type = "prob")[,2]
 
-#Generate a probability value that represents the probability that a student levels up based your classification tree 
-
-D1$pred <- predict(rp, type = "prob")[,2]#Last class we used type = "class" which predicted the classification for us, this time we are using type = "prob" to see the probability that our classififcation is based on.
-
-#Now you can generate the ROC curve for your model. You will need to install the package ROCR to do this.
-
+#ROC curve
 library(ROCR)
-
-#Plot the curve
+#Plot curve
 pred.detail <- prediction(D1$pred, D1$level.up) 
 plot(performance(pred.detail, "tpr", "fpr"))
 abline(0, 1, lty = 2)
+#Calculate AUC
+unlist(slot(performance(pred.detail,"auc"), "y.values"))
 
-#Calculate the Area Under the Curve
-unlist(slot(performance(Pred2,"auc"), "y.values"))#Unlist liberates the AUC value from the "performance" object created by ROCR
-
-#Now repeat this process, but using the variables you did not use for the previous model and compare the plots & results of your two models. Which one do you think was the better model? Why?
-
+#use variables not used, compare plots & results. Which model was better? Why?
+rp2 <- rpart(level.up~pre.test.score + av.assignment.score, method="class", data=D1)
+printcp(rp2) 
+post(rp2, file='',title='Tree2') # plot
+D1$pred2 <- predict(rp2, type = "prob")[,2]
+pred.detail2 <- prediction(D1$pred2, D1$level.up) 
+plot(performance(pred.detail2, "tpr", "fpr"))
+unlist(slot(performance(pred.detail2,"auc"), "y.values")) # results
 ```
+
+Based on AUC, the second model is better than the first one, with 0.977 vs. 0.855. The result is also reflected in the ROC plot, with the area of the first model larger than the second one. However, the first model achieved perfection, a rather weird result.
+
 #Thresholds
 ```{r}
-#Look at the ROC plot for your first model. Based on this plot choose a probability threshold that balances capturing the most correct predictions against false positives. Then generate a new variable in your data set that classifies each student according to your chosen threshold.
+#Find balance threshold for 1st model, generate a variable that classifies accordingly
+D1$level.up <- ifelse(D1$level.up=="yes", 1, 0)
 
-threshold.pred1 <- 
+diagnostics <- function(thr){
+    pred <- sum(D1$pred > thr)
+    #diagnostics
+    accuracy <- pred / nrow(D1)
+    false.pos <- sum(D1$pred>thr & D1$level.up==0)
+    precision <- pred / (pred + false.pos)
+    false.neg <- sum(D1$pred<=thr & D1$level.up==1)
+    recall <- pred/(pred + false.neg)
+    #Kappa
+    D1$pred1 <- D1$pred > thr
+    table1 <- table(D1$level.up, D1$pred1)
+    matrix1 <- as.matrix(table1)
+    kappa = kappa(matrix1, exact = TRUE)/kappa(matrix1)
+    return(c(paste("accuracy: ", accuracy), paste("precision: ", precision), 
+             paste("recall: ",  recall), paste("kappa: ", kappa)))
+}
 
-#Now generate three diagnostics:
-
-D1$accuracy.model1 <-
-
-D1$precision.model1 <- 
-
-D1$recall.model1 <- 
-
-#Finally, calculate Kappa for your model according to:
-
-#First generate the table of comparisons
-table1 <- table(D1$level.up, D1$threshold.pred1)
-
-#Convert to matrix
-matrix1 <- as.matrix(table1)
-
-#Calculate kappa
-kappa(matrix1, exact = TRUE)/kappa(matrix1)
-
-#Now choose a different threshold value and repeat these diagnostics. What conclusions can you draw about your two thresholds?
-
+diagnostics(.99)
+diagnostics(.9)
+diagnostics(.8)
+diagnostics(.7)
+diagnostics(.6)
+diagnostics(.05)
+diagnostics(.01)
 ```
+
+Conclusions?
+A threshhold of .6 and .7 seems to be the best considering all diagnostic measures. For values over .8, kappa is 1, but the other diagnostics are either 0 or not attainable. For values around .6 and .7, kappa is close to .941, accuracy is around .5 and precision is around .8. For values below 1, kappa is 1, both acccuracy and recall are 1, and precision is .625. Second, kappa does not seem to be a good measure, since in this case all values of the threshold give high kappa values.
+
 
 
